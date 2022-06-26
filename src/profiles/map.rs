@@ -1,18 +1,49 @@
+use std::collections::hash_map::IntoIter;
 use std::collections::HashMap;
 use std::fmt::{Debug, Write};
 use std::mem::{replace, take};
-use super::DataProfile;
+
+use crate::{DeserializationError, ProfileFromData, TransformResult};
 use crate::datum::{Datum, Equals};
-use crate::{DeserializationError, TransformResult};
+
+use super::DataProfile;
+
+pub trait DatumMap: Debug {
+	fn get_datum(&mut self, key: &'static str) -> Result<Datum, DeserializationError>;
+}
 
 
-/// A base data profile for data that is stored in a map, with keys and values
-/// Keys are always static strings
+#[derive(Debug)]
+enum SerdeMap {
+	Deserializing(Box<dyn DatumMap>),
+	Serializing(HashMap<&'static str, Datum>),
+}
+
+
+impl SerdeMap {
+	fn set(&mut self, key: &'static str, value: Datum) {
+		match self {
+			Self::Deserializing(_) => panic!("Attempted to set while deserializing! Please report this to the developer"),
+			Self::Serializing(x) => x.insert(key, value)
+		};
+	}
+	
+	fn get(&mut self, key: &'static str) -> Result<Datum, DeserializationError> {
+		match self {
+			Self::Deserializing(x) => x.get_datum(key),
+			Self::Serializing(_) => panic!("Attempted to get while serializing! Please report this to the developer")
+		}
+	}
+}
+
+
+/// A base data profile for data that is stored in a map, with keys and values.
+/// Keys are always static strings.
 /// You will not instantiate this directly, but you will make aliases to this using the make_data_profile macro
 #[derive(Debug)]
 pub struct MappedData {
-	pub(crate) serializing: bool,
-	pub(crate) map: HashMap<String, Datum>
+	serializing: bool,
+	data: SerdeMap,
 }
 
 
@@ -23,17 +54,23 @@ impl DataProfile for MappedData {
 	fn serial_ready() -> Self {
 		Self {
 			serializing: true,
-			map: HashMap::new(),
+			data: SerdeMap::Serializing(HashMap::new()),
 		}
 	}
 }
 
 
 impl MappedData {
+	pub fn into_serialized_entries(self) -> IntoIter<&'static str, Datum> {
+		match self.data {
+			SerdeMap::Deserializing(_) => panic!("Attempted to iterate through entries while deserializing"),
+			SerdeMap::Serializing(x) => x.into_iter()
+		}
+	}
 	/// Serialize a named value as an entry
 	/// The value must be able to turn into a Datum by implementing Into<Datum>
 	pub fn serialize_entry<T: Into<Datum>>(&mut self, name: &'static str, value: T) {
-		self.map.insert(name.into(), value.into());
+		self.data.set(name, value.into());
 	}
 	/// Deserialize a named entry
 	/// The value must be able to come from a Datum by implementing TryFrom<Datum>
@@ -43,7 +80,7 @@ impl MappedData {
 	{
 		let _ = replace(
 			into,
-			self.map.remove(name).ok_or(DeserializationError::MissingField(name))?.try_into().transform(name)?
+			self.data.get(name)?.try_into().transform(name)?,
 		);
 		Ok(())
 	}
@@ -54,18 +91,18 @@ impl MappedData {
 			T: Into<Datum> + Default + Equals<Datum> + Debug,
 			I: Iterator<Item=T>
 	{
-		let item = self.map.remove(name).ok_or(DeserializationError::MissingField(name))?;
+		let item = self.data.get(name)?;
 		
 		for maybe_match in matches {
 			if maybe_match.equals(&item) {
 				let _ = replace(value, maybe_match);
-				return Ok(())
+				return Ok(());
 			}
 		}
 		
 		let mut debug_string = String::new();
 		let _ = writeln!(&mut debug_string, "{:?}", item);
-		Err(DeserializationError::NoMatch {field: name, actual: debug_string})
+		Err(DeserializationError::NoMatch { field: name, actual: debug_string })
 	}
 	/// Deserialize a named entry that is one of the given matches
 	/// The value will be cloned from matches
@@ -74,18 +111,18 @@ impl MappedData {
 			T: Into<Datum> + Default + Equals<Datum> + Debug + Clone + 'a,
 			I: Iterator<Item=&'a T>
 	{
-		let item = self.map.remove(name).ok_or(DeserializationError::MissingField(name))?;
+		let item = self.data.get(name)?;
 		
 		for maybe_match in matches {
 			if maybe_match.equals(&item) {
 				let _ = replace(value, maybe_match.clone());
-				return Ok(())
+				return Ok(());
 			}
 		}
 		
 		let mut debug_string = String::new();
 		let _ = writeln!(&mut debug_string, "{:?}", item);
-		Err(DeserializationError::NoMatch {field: name, actual: debug_string})
+		Err(DeserializationError::NoMatch { field: name, actual: debug_string })
 	}
 	/// Either serializes or deserializes a named entry
 	/// The data type of the field must be able to turn into or come from a Datum
@@ -127,5 +164,15 @@ impl MappedData {
 			return Ok(());
 		}
 		self.deserialize_cloned_matched_entry(name, value, matches)
+	}
+}
+
+
+impl<D: DatumMap + 'static> ProfileFromData<D> for MappedData {
+	fn try_from(data: D) -> Result<Self, DeserializationError> {
+		Ok(Self {
+			serializing: false,
+			data: SerdeMap::Deserializing(Box::new(data)),
+		})
 	}
 }

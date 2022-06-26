@@ -1,9 +1,19 @@
-use super::*;
-
 use extern_toml::{de::Error, Value, value::Table};
-use crate::datum::Datum;
 pub(crate) use extern_toml::to_string as to_toml_string;
-use crate::profiles::MappedData;
+
+use crate::datum::Datum;
+use crate::DeserializationError;
+use crate::profiles::{DatumMap, MappedData};
+use crate::profiles::{ProfileFromData, ProfileToData};
+
+impl DatumMap for Table {
+	fn get_datum(&mut self, key: &'static str) -> Result<Datum, DeserializationError> {
+		match self.remove(key) {
+			None => Err(DeserializationError::MissingField(key)),
+			Some(x) => Datum::try_from(x)
+		}
+	}
+}
 
 
 impl From<Error> for DeserializationError {
@@ -17,7 +27,7 @@ impl ProfileToData<Value> for MappedData {
 	fn into(self) -> Value {
 		let mut table = Table::new();
 		
-		for (name, value) in self.map {
+		for (name, value) in self.into_serialized_entries() {
 			table.insert(name.into(), value.into());
 		}
 		
@@ -32,16 +42,8 @@ impl ProfileFromData<Value> for MappedData {
 			Value::Table(x) => x,
 			_ => return Err(DeserializationError::InvalidType { field: "<global>", expected: "table", actual: "todo!" })
 		};
-		let mut map = HashMap::new();
 		
-		for (name, value) in table {
-			map.insert(name, Datum::try_from(value)?);
-		}
-		
-		Ok(Self {
-			serializing: false,
-			map,
-		})
+		ProfileFromData::try_from(table)
 	}
 }
 
