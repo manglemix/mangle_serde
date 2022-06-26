@@ -21,21 +21,22 @@
 
 #[cfg(feature = "toml")]
 extern crate toml as extern_toml;
+
+#[forbid(unsafe_code, unconditional_panic)]
+use std::borrow::Borrow;
+use std::fmt::Debug;
+use std::ops::{Deref, DerefMut};
+
 #[cfg(feature = "toml")]
 use extern_toml::{de::Error as TOMLError, Value as TOMLValue};
+
+pub use crate::profiles::{ArrayData, DataProfile, MappedData, ProfileFromData, ProfileToData};
+
 #[cfg(feature = "toml")]
 mod toml;
 
 mod datum;
 mod profiles;
-
-#[forbid(unsafe_code, unconditional_panic)]
-use std::borrow::Borrow;
-use std::collections::HashMap;
-use std::fmt::{Debug};
-use std::ops::{Deref, DerefMut};
-use crate::profiles::{DataProfile, ProfileToData, MappedData, ProfileFromData, ArrayData};
-
 
 /// An error that can occur when trying to deserialize data
 #[derive(Clone, Debug)]
@@ -44,21 +45,21 @@ pub enum DeserializationError {
 	/// Contains the field name
 	MissingField(&'static str),
 	/// An expected field has an unexpected data type
-	InvalidType{
+	InvalidType {
 		/// The name of the field
 		/// The name "\<global\>" implies that the entire serialized data is in the wrong format
 		field: &'static str,
 		/// The expected type of the field
 		expected: &'static str,
 		/// The actual type of the field
-		actual: &'static str
+		actual: &'static str,
 	},
 	/// An expected field does not contain any of the expected data
-	NoMatch{
+	NoMatch {
 		/// The name of the field
 		field: &'static str,
 		/// The actual data contained in the field
-		actual: String
+		actual: String,
 	},
 	#[cfg(feature = "toml")]
 	/// An error occurred while parsing TOML formatted data
@@ -135,10 +136,10 @@ make_data_profile!(
 	ReadableProfile use MappedData
 );
 
-make_data_profile!(
-	/// A data representation profile that should be used for dealing with serialized data that is space efficient
-	EfficientProfile use ArrayData<Vec<u8>>
-);
+// make_data_profile!(
+// 	/// A data representation profile that should be used for dealing with serialized data that is space efficient
+// 	EfficientProfile use ArrayData<Vec<u8>>
+// );
 
 
 #[cfg(test)]
@@ -149,7 +150,7 @@ mod tests {
 	struct TestStruct {
 		name: &'static str,
 		age: usize,
-		id: String
+		id: String,
 	}
 	
 	impl Serde<ReadableProfile> for TestStruct {
@@ -165,9 +166,9 @@ mod tests {
 	#[test]
 	fn test_serde() {
 		let src = TestStruct {
-			name : "ferus",
-			age : 52,
-			id : "gangnam".into()
+			name: "ferus",
+			age: 52,
+			id: "gangnam".into(),
 		};
 		let ser = src.serialize_toml();
 		println!("{}", ser);

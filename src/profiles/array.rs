@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
-use crate::DataProfile;
 
+use crate::DataProfile;
 
 #[derive(Debug)]
 pub(crate) enum DataStream<RW: Read + Write + Default> {
@@ -37,9 +37,9 @@ impl<RW: Read + Write + Default> Write for DataStream<RW> {
 
 
 #[derive(Debug)]
-pub struct ArrayData<RW: Read + Write + Default>  {
+pub struct ArrayData<RW: Read + Write + Default> {
 	pub(crate) serializing: bool,
-	pub(crate) data: DataStream<RW>
+	pub(crate) data: DataStream<RW>,
 }
 
 

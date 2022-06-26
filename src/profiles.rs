@@ -1,10 +1,10 @@
+pub use array::ArrayData;
+pub use map::{DatumMap, MappedData};
+
+use crate::DeserializationError;
+
 mod map;
 mod array;
-
-pub use map::MappedData;
-use crate::DeserializationError;
-pub use array::ArrayData;
-
 
 /// A Trait that all data profiles should implement
 pub trait DataProfile {

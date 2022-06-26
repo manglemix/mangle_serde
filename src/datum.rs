@@ -1,6 +1,6 @@
 use crate::profiles::MappedData;
-use super::*;
 
+use super::*;
 
 /// For checking equality against arbitrary types
 /// Mainly used for comparing Datum to arbitrary types
@@ -58,7 +58,7 @@ impl TryFrom<Datum> for usize {
 	fn try_from(value: Datum) -> Result<Self, Self::Error> {
 		match value {
 			Datum::U64(n) => Ok(n as usize),
-			_ => Err(DeserializationError::InvalidType {field: "", expected: "u64", actual: "todo!"})
+			_ => Err(DeserializationError::InvalidType { field: "", expected: "u64", actual: "todo!" })
 		}
 	}
 }
@@ -70,7 +70,7 @@ impl TryFrom<Datum> for String {
 	fn try_from(value: Datum) -> Result<Self, Self::Error> {
 		match value {
 			Datum::String(x) => Ok(x),
-			_ => Err(DeserializationError::InvalidType {field: "", expected: "String", actual: "todo!"})
+			_ => Err(DeserializationError::InvalidType { field: "", expected: "String", actual: "todo!" })
 		}
 	}
 }
@@ -82,7 +82,7 @@ impl TryFrom<Datum> for &'static str {
 	fn try_from(value: Datum) -> Result<Self, Self::Error> {
 		match value {
 			Datum::Str(x) => Ok(x),
-			_ => Err(DeserializationError::InvalidType {field: "", expected: "static str", actual: "todo!"})
+			_ => Err(DeserializationError::InvalidType { field: "", expected: "static str", actual: "todo!" })
 		}
 	}
 }
