@@ -17,6 +17,7 @@ pub enum Datum {
 	Str(&'static str),
 	U64(u64),
 	Map(MappedData),
+	Array(ArrayData)
 }
 
 

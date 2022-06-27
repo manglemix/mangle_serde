@@ -1,8 +1,9 @@
 use extern_toml::{de::Error, Value, value::Table};
 pub(crate) use extern_toml::to_string as to_toml_string;
+use extern_toml::value::Array;
 
 use crate::datum::Datum;
-use crate::DeserializationError;
+use crate::{ArrayData, DeserializationError};
 use crate::profiles::{DatumMap, MappedData};
 use crate::profiles::{ProfileFromData, ProfileToData};
 
@@ -19,6 +20,19 @@ impl DatumMap for Table {
 impl From<Error> for DeserializationError {
 	fn from(e: Error) -> Self {
 		DeserializationError::TOMLError(e)
+	}
+}
+
+
+impl ProfileToData<Value> for ArrayData {
+	fn into(self) -> Value {
+		let mut array = Array::new();
+		
+		for item in self.into_serialized_items() {
+			array.push(item.into());
+		}
+		
+		Value::Array(array)
 	}
 }
 
@@ -71,8 +85,9 @@ impl From<Datum> for Value {
 		match datum {
 			Datum::U64(n) => (n as i64).into(),
 			Datum::String(s) => s.into(),
-			Datum::Map(d) => ProfileToData::into(d),
-			Datum::Str(s) => s.into()
+			Datum::Map(map) => ProfileToData::into(map),
+			Datum::Str(s) => s.into(),
+			Datum::Array(arr) => ProfileToData::into(arr)
 		}
 	}
 }

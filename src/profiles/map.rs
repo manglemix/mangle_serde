@@ -5,6 +5,7 @@ use std::mem::{replace, take};
 
 use crate::{DeserializationError, ProfileFromData, TransformResult};
 use crate::datum::{Datum, Equals};
+use crate::profiles::SerdeData;
 
 use super::DataProfile;
 
@@ -12,12 +13,7 @@ pub trait DatumMap: Debug {
 	fn get_datum(&mut self, key: &'static str) -> Result<Datum, DeserializationError>;
 }
 
-
-#[derive(Debug)]
-enum SerdeMap {
-	Deserializing(Box<dyn DatumMap>),
-	Serializing(HashMap<&'static str, Datum>),
-}
+type SerdeMap = SerdeData<HashMap<&'static str, Datum>, dyn DatumMap>;
 
 
 impl SerdeMap {
@@ -39,7 +35,7 @@ impl SerdeMap {
 
 /// A base data profile for data that is stored in a map, with keys and values.
 /// Keys are always static strings.
-/// You will not instantiate this directly, but you will make aliases to this using the make_data_profile macro
+/// You will not instantiate this directly, but you will make aliases of this using the make_data_profile macro
 #[derive(Debug)]
 pub struct MappedData {
 	serializing: bool,
@@ -67,7 +63,7 @@ impl MappedData {
 			SerdeMap::Serializing(x) => x.into_iter()
 		}
 	}
-	/// Serialize a named value as an entry
+	/// Serialize a named value as an entry.
 	/// The value must be able to turn into a Datum by implementing Into<Datum>
 	pub fn serialize_entry<T: Into<Datum>>(&mut self, name: &'static str, value: T) {
 		self.data.set(name, value.into());

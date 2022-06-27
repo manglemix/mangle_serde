@@ -1,56 +1,42 @@
-use std::io::{Read, Write};
+use std::fmt::Debug;
+use std::vec::IntoIter;
 
-use crate::DataProfile;
+use crate::{DataProfile, DeserializationError};
+use crate::datum::Datum;
+use super::SerdeData;
+
+type SerdeArray = SerdeData<Vec<Datum>, dyn DatumArray>;
+
+
+pub trait DatumArray: Debug {
+	fn get_datum(&mut self, size: usize) -> Result<Datum, DeserializationError>;
+}
 
 #[derive(Debug)]
-pub(crate) enum DataStream<RW: Read + Write + Default> {
-	Reader(RW),
-	Writer(RW),
+pub struct ArrayData {
+	serializing: bool,
+	data: SerdeArray,
 }
 
 
-impl<RW: Read + Write + Default> Read for DataStream<RW> {
-	fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-		match self {
-			Self::Reader(reader) => reader.read(buf),
-			Self::Writer(_) => panic!("Attempted to read from a writer!")
-		}
-	}
-}
-
-
-impl<RW: Read + Write + Default> Write for DataStream<RW> {
-	fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-		match self {
-			Self::Writer(writer) => writer.write(buf),
-			Self::Reader(_) => panic!("Attempted to write to a reader!")
-		}
-	}
-	
-	fn flush(&mut self) -> std::io::Result<()> {
-		match self {
-			Self::Writer(writer) => writer.flush(),
-			Self::Reader(_) => panic!("Attempted to flush a reader!")
-		}
-	}
-}
-
-
-#[derive(Debug)]
-pub struct ArrayData<RW: Read + Write + Default> {
-	pub(crate) serializing: bool,
-	pub(crate) data: DataStream<RW>,
-}
-
-
-impl<RW: Read + Write + Default> DataProfile for ArrayData<RW> {
+impl DataProfile for ArrayData {
 	fn is_serial(&self) -> bool {
 		self.serializing
 	}
 	fn serial_ready() -> Self {
 		Self {
 			serializing: true,
-			data: DataStream::Writer(RW::default()),
+			data: SerdeArray::Serializing(Vec::new()),
+		}
+	}
+}
+
+
+impl ArrayData {
+	pub fn into_serialized_items(self) -> IntoIter<Datum> {
+		match self.data {
+			SerdeArray::Serializing(x) => x.into_iter(),
+			SerdeArray::Deserializing(_) => panic!("Attempted to iterate through items while deserializing")
 		}
 	}
 }

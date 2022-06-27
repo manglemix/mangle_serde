@@ -6,6 +6,14 @@ use crate::DeserializationError;
 mod map;
 mod array;
 
+
+#[derive(Debug)]
+enum SerdeData<S: 'static, D: ?Sized> {
+	Deserializing(Box<D>),
+	Serializing(S),
+}
+
+
 /// A Trait that all data profiles should implement
 pub trait DataProfile {
 	/// Returns true iff the profile is being used to serialize data.
