@@ -1,9 +1,9 @@
+use std::borrow::Borrow;
 use extern_toml::{de::Error, Value, value::Table};
-pub(crate) use extern_toml::to_string as to_toml_string;
 use extern_toml::value::Array;
 
 use crate::datum::Datum;
-use crate::{ArrayData, DeserializationError};
+use crate::{ArrayData, DataProfile, DeserializationError, Serde};
 use crate::profiles::{DatumMap, MappedData};
 use crate::profiles::{ProfileFromData, ProfileToData};
 
@@ -28,7 +28,7 @@ impl ProfileToData<Value> for ArrayData {
 	fn into(self) -> Value {
 		let mut array = Array::new();
 		
-		for item in self.into_serialized_items() {
+		for (item, _) in self.into_serialized_items() {
 			array.push(item.into());
 		}
 		
@@ -93,18 +93,17 @@ impl From<Datum> for Value {
 }
 
 
-/// Adds helper functions for serializing and deserializing TOML formatted strings
-#[cfg(feature = "toml")]
-#[macro_export]
-macro_rules! impl_toml_serde {
-    ($name: ident) => {
-		impl $name {
-			fn serialize_toml(self) -> String {
-				toml::to_toml_string(&self.serialize::<TOMLValue>()).expect("An error occurred during TOML Serialization. Please report this to the developer")
-			}
-			fn deserialize_toml<T: Borrow<str>>(data: T) -> Result<Self, DeserializationError> {
-				Self::deserialize::<TOMLValue>(data.borrow().parse()?)
-			}
-		}
-	};
+pub trait TOMLSerde<T: DataProfile + ProfileToData<Value> + ProfileFromData<Value>>: Serde<T> {
+	/// Serializes self into a TOML formatted string
+	///
+	/// # Panics
+	/// This method should not panic. If it does, please report the error to the developer
+	fn serialize_toml(self) -> String {
+		extern_toml::to_string(&self.serialize::<Value>()).expect("An error occurred during TOML Serialization. Please report this to the developer")
+	}
+	/// Deserializes a string type into Self.
+	/// Returns an error if the string could not be deserialized
+	fn deserialize_toml<S: Borrow<str>>(data: S) -> Result<Self, DeserializationError> {
+		Self::deserialize::<Value>(data.borrow().parse()?)
+	}
 }

@@ -57,6 +57,10 @@ impl DataProfile for MappedData {
 
 
 impl MappedData {
+	/// Converts this data profile into an iterator over serialized entries
+	///
+	/// # panic
+	/// Panics if this data profile is not in serialization mode
 	pub fn into_serialized_entries(self) -> IntoIter<&'static str, Datum> {
 		match self.data {
 			SerdeMap::Deserializing(_) => panic!("Attempted to iterate through entries while deserializing"),
@@ -100,7 +104,7 @@ impl MappedData {
 		let _ = writeln!(&mut debug_string, "{:?}", item);
 		Err(DeserializationError::NoMatch { field: name, actual: debug_string })
 	}
-	/// Deserialize a named entry that is one of the given matches
+	/// Deserialize a named entry that is one of the given matches.
 	/// The value will be cloned from matches
 	pub fn deserialize_cloned_matched_entry<'a, T, I>(&mut self, name: &'static str, value: &mut T, matches: I) -> Result<(), DeserializationError>
 		where
@@ -120,8 +124,8 @@ impl MappedData {
 		let _ = writeln!(&mut debug_string, "{:?}", item);
 		Err(DeserializationError::NoMatch { field: name, actual: debug_string })
 	}
-	/// Either serializes or deserializes a named entry
-	/// The data type of the field must be able to turn into or come from a Datum
+	/// Either serializes or deserializes a named entry.
+	/// The data type of the field must be able to convert to or from a Datum
 	pub fn serde_entry<T>(&mut self, name: &'static str, value: &mut T) -> Result<(), DeserializationError>
 		where T: Into<Datum> + TryFrom<Datum, Error=DeserializationError> + Default
 	{
@@ -131,9 +135,9 @@ impl MappedData {
 		}
 		self.deserialize_entry(name, value)
 	}
-	/// Either serializes or deserializes a named entry that can only be an item in matches
-	/// Note that the value only needs to be present in matches during deserialization
-	/// The data type of the field must be able to turn into a Datum
+	/// Either serializes or deserializes a named entry that can only be an item in matches.
+	/// Note that the value only needs to be present in matches during deserialization.
+	/// The data type of the field must be able to turn into a Datum.
 	/// The value is taken from matches
 	pub fn serde_matched_entry<T, I>(&mut self, name: &'static str, value: &mut T, matches: I) -> Result<(), DeserializationError>
 		where
@@ -146,9 +150,9 @@ impl MappedData {
 		}
 		self.deserialize_matched_entry(name, value, matches)
 	}
-	/// Either serializes or deserializes a named entry that can only be an item in matches
-	/// Note that the value only needs to be present in matches during deserialization
-	/// The data type of the field must be able to turn into a Datum
+	/// Either serializes or deserializes a named entry that can only be an item in matches.
+	/// Note that the value only needs to be present in matches during deserialization.
+	/// The data type of the field must be able to turn into a Datum.
 	/// The value is cloned from matches
 	pub fn serde_cloned_matched_entry<'a, T, I>(&mut self, name: &'static str, value: &mut T, matches: I) -> Result<(), DeserializationError>
 		where

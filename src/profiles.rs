@@ -1,4 +1,6 @@
-pub use array::ArrayData;
+use std::mem::swap;
+use std::ops::DerefMut;
+pub use array::{DatumArray, ArrayData};
 pub use map::{DatumMap, MappedData};
 
 use crate::DeserializationError;
@@ -7,6 +9,8 @@ mod map;
 mod array;
 
 
+/// An internal representation of the agnostic data format.
+/// This format can only be in serialization or deserialization mode, not both
 #[derive(Debug)]
 enum SerdeData<S: 'static, D: ?Sized> {
 	Deserializing(Box<D>),
@@ -27,11 +31,16 @@ pub trait DataProfile {
 /// Allows a data profile to be instantiated from another type.
 /// The data profile must be ready for deserialization
 pub trait ProfileFromData<D>: Sized {
+	/// Tries to create a data profile from the given data
 	fn try_from(data: D) -> Result<Self, DeserializationError>;
 }
 
 
+/// Allows a data profile to convert into another type.
+/// The data profile must be ready for serialization
 pub trait ProfileToData<D> {
+	/// Converts the data profile into another type.
+	/// Implementors must ensure that this conversion will not fail
 	fn into(self) -> D;
 }
 
@@ -40,17 +49,24 @@ pub trait ProfileToData<D> {
 /// All required functionality is automatically implemented
 #[macro_export]
 macro_rules! make_data_profile {
-	($name: ident use $base: ty) => {
-		make_data_profile!(
-			///
-			=> $name use $base
-		)
-	};
+	// ($name: ident use $base: ty) => {
+	// 	make_data_profile!(
+	// 		///
+	// 		=> $name use $base
+	// 	)
+	// };
     ($(#[$attr:meta])* $name: ident use $base: ty) => {
 
 $(#[$attr])*
 #[derive(Debug)]
 pub struct $name($base);
+
+
+// impl<T: DerefMut<Target=$base>> From<T> for $name {
+// 	fn from(other: T) -> Self {
+// 		Self(std::mem::replace(other.deref_mut().data))
+// 	}
+// }
 
 impl Deref for $name {
 	type Target = $base;
@@ -88,4 +104,25 @@ impl<D> ProfileToData<D> for $name where $base: ProfileToData<D> {
 }
     
     };
+}
+
+
+/// Converts the given data profile into another data profile.
+/// Both types must use the same base data profile
+///
+/// This is niche function that can come in handy if you are handling many data profiles and you want to
+/// change them all into the same data profile.
+/// This can also be used to convert between sub-formats.
+/// 
+/// If you have two different styles for toml that you have to use,
+/// you can create two data profiles for serializing to toml
+/// and use this function to convert profiles when necessary
+pub fn convert_data_profile<B, P, T>(mut src: T) -> P
+	where
+		P: DerefMut<Target=B> + DataProfile,
+		T: DerefMut<Target=B>,
+{
+	let mut new = P::serial_ready();
+	swap(src.deref_mut(), new.deref_mut());
+	new
 }
