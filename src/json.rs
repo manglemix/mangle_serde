@@ -1,6 +1,5 @@
 use std::borrow::Borrow;
-use extern_toml::{de::Error, Value, value::Table};
-use extern_toml::value::Array;
+use extern_json::{Error, JsonValue as Value, object::Object as Table, Array};
 
 use crate::datum::Datum;
 use crate::{ArrayData, DataProfile, DeserializationError, Serde};
@@ -20,7 +19,7 @@ impl DatumMap for Table {
 
 impl From<Error> for DeserializationError {
 	fn from(e: Error) -> Self {
-		DeserializationError::TOMLError(e)
+		DeserializationError::JSONError(e)
 	}
 }
 
@@ -43,10 +42,10 @@ impl ProfileToData<Value> for MappedData {
 		let mut table = Table::new();
 		
 		for (name, value) in self.into_serialized_entries() {
-			table.insert(name.to_key_string(), value.into());
+			table.insert(name.to_key_string().as_str(), value.into());
 		}
 		
-		Value::Table(table)
+		Value::Object(table)
 	}
 }
 
@@ -54,7 +53,7 @@ impl ProfileToData<Value> for MappedData {
 impl ProfileFromData<Value> for MappedData {
 	fn try_from(data: Value) -> Result<Self, DeserializationError> {
 		let table = match data {
-			Value::Table(x) => x,
+			Value::Object(x) => x,
 			_ => return Err(DeserializationError::InvalidType { field: "<global>".into(), expected: "table", actual: "todo!" })
 		};
 		
@@ -67,15 +66,26 @@ impl TryFrom<Value> for Datum {
 	type Error = DeserializationError;
 	
 	fn try_from(value: Value) -> Result<Self, Self::Error> {
-		if value.is_table() {
+		if value.is_object() {
 			return Ok(Self::Map(ProfileFromData::try_from(value)?));
 		}
-		
+
+		if value.is_number() {
+			return Ok(Self::U64(
+				value.as_u64().ok_or(DeserializationError::InvalidType {
+					field: "".into(),
+					expected: "integer",
+					actual: "nan"
+				})?
+			));
+		}
+
 		Ok(match value {
 			Value::String(s) => Self::String(s),
-			Value::Integer(n) => Self::U64(n as u64),
-			Value::Table(_) => unreachable!(),
-			_ => todo!()
+			Value::Short(s) => Self::String(s.into()),
+			Value::Number(_) => unreachable!(),
+			Value::Object(_) => unreachable!(),
+			x => todo!("{:?}", x)
 		})
 	}
 }
@@ -84,8 +94,8 @@ impl TryFrom<Value> for Datum {
 impl From<Datum> for Value {
 	fn from(datum: Datum) -> Self {
 		match datum {
-			Datum::U32(n) => (n as i64).into(),
 			Datum::U64(n) => (n as i64).into(),
+			Datum::U32(n) => (n as i64).into(),
 			Datum::String(s) => s.into(),
 			Datum::Map(map) => ProfileToData::into(map),
 			// Datum::Str(s) => s.into(),
@@ -95,17 +105,18 @@ impl From<Datum> for Value {
 }
 
 
-pub trait TOMLSerde<T: DataProfile + ProfileToData<Value> + ProfileFromData<Value>>: Serde<T> {
-	/// Serializes self into a TOML formatted string
-	///
-	/// # Panics
-	/// This method should not panic. If it does, please report the error to the developer
-	fn serialize_toml(self) -> String {
-		extern_toml::to_string(&self.serialize::<Value>()).expect("An error occurred during TOML Serialization. Please report this to the developer")
+pub trait JSONSerde<T: DataProfile + ProfileToData<Value> + ProfileFromData<Value>>: Serde<T> {
+	const TAB_SIZE: u16;
+	/// Serializes self into a JSON formatted string
+	fn serialize_json(self) -> String {
+		extern_json::stringify(self.serialize::<Value>())
+	}
+	fn serialize_json_pretty(self) -> String {
+		extern_json::stringify_pretty(self.serialize::<Value>(), Self::TAB_SIZE)
 	}
 	/// Deserializes a string type into Self.
 	/// Returns an error if the string could not be deserialized
-	fn deserialize_toml<S: Borrow<str>>(data: S) -> Result<Self, DeserializationError> {
-		Self::deserialize::<Value>(data.borrow().parse()?)
+	fn deserialize_json<S: Borrow<str>>(data: S) -> Result<Self, DeserializationError> {
+		Self::deserialize::<Value>(extern_json::parse(data.borrow())?)
 	}
 }

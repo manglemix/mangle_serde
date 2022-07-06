@@ -1,4 +1,6 @@
-use crate::profiles::MappedData;
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
+use crate::profiles::{DatumMap, MappedData};
 
 use super::*;
 
@@ -14,17 +16,78 @@ pub trait Equals<T> {
 #[derive(Debug)]
 pub enum Datum {
 	String(String),
-	Str(&'static str),
+	// Str(&'static str),
+	U32(u32),
 	U64(u64),
 	Map(MappedData),
 	Array(ArrayData)
 }
 
 
+impl Default for Datum {
+	fn default() -> Self {
+		Self::U32(0)
+	}
+}
+
+
+impl PartialEq for Datum {
+	fn eq(&self, other: &Self) -> bool {
+		match self {
+			Datum::String(x) => if let Datum::String(o) = other {
+											x == o
+										} else { false }
+			// Datum::Str(x) => 	if let Datum::Str(o) = other {
+			// 								x == o
+			// 							} else { false }
+			Datum::U32(x) =>  if let Datum::U32(o) = other {
+										x == o
+									} else { false }
+			Datum::U64(x) => 	if let Datum::U64(o) = other {
+									x == o
+								} else { false }
+			Datum::Map(_) => unimplemented!("Cannot compare MappedData"),
+			Datum::Array(_) => unimplemented!("Cannot compare ArrayData")
+		}
+	}
+}
+
+
+impl Eq for Datum {}
+
+
+impl Clone for Datum {
+	fn clone(&self) -> Self {
+		match self {
+			Datum::String(x) => Datum::String(x.clone()),
+			// Datum::Str(x) => Datum::Str(x.clone()),
+			Datum::U32(x) => Datum::U32(*x),
+			Datum::U64(x) => Datum::U64(*x),
+			Datum::Map(_) => unimplemented!("Cannot clone a MappedData"),
+			Datum::Array(_) => unimplemented!("Cannot clone an ArrayData")
+		}
+	}
+}
+
+
+impl Hash for Datum {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		match self {
+			Datum::String(x) => x.hash(state),
+			// Datum::Str(x) => x.hash(state),
+			Datum::U32(x) => x.hash(state),
+			Datum::U64(x) => x.hash(state),
+			Datum::Map(_) => unimplemented!("Cannot hash MappedData!"),
+			Datum::Array(_) => unimplemented!("Cannot hash ArrayData!")
+		}
+	}
+}
+
+
 #[derive(Debug, Copy, Clone)]
 pub enum DatumType {
 	String,
-	Str,
+	U32,
 	U64,
 	Map,
 	Array
@@ -65,7 +128,8 @@ impl Datum {
 	pub fn get_type(&self) -> DatumType {
 		match self {
 			Self::String(_) => DatumType::String,
-			Self::Str(_) => DatumType::Str,
+			// Self::Str(_) => DatumType::Str,
+			Self::U32(_) => DatumType::U32,
 			Self::U64(_) => DatumType::U64,
 			Self::Map(_) => DatumType::Map,
 			Self::Array(_) => DatumType::Array
@@ -74,10 +138,10 @@ impl Datum {
 }
 
 
-impl Equals<Datum> for &'static str {
-	fn equals(&self, other: &Datum) -> bool {
+impl PartialEq<Datum> for &str {
+	fn eq(&self, other: &Datum) -> bool {
 		match other {
-			Datum::Str(s) => self == s,
+			// Datum::Str(s) => self == s,
 			Datum::String(s) => self == s,
 			_ => false
 		}
@@ -92,9 +156,9 @@ impl From<String> for Datum {
 }
 
 
-impl From<&'static str> for Datum {
-	fn from(s: &'static str) -> Self {
-		Self::Str(s)
+impl From<&str> for Datum {
+	fn from(s: &str) -> Self {
+		Self::String(s.into())
 	}
 }
 
@@ -106,11 +170,41 @@ impl From<u64> for Datum {
 }
 
 
+impl From<u32> for Datum {
+	fn from(n: u32) -> Self {
+		Self::U32(n)
+	}
+}
+
+
 impl From<usize> for Datum {
 	fn from(n: usize) -> Self {
 		Self::U64(n as u64)
 	}
 }
+
+
+impl<E, K, V> DatumMap for HashMap<K, V>
+	where
+		K: TryFrom<Datum, Error=E> + Debug + Eq + Hash,
+		V: Into<Datum> + Debug,
+		DeserializationError: From<E>
+{
+	fn get_datum(&mut self, key: &Datum) -> Result<Datum, DeserializationError> {
+		match self.remove(&K::try_from(key.clone())?) {
+			Some(x) => Ok(x.into()),
+			None => Err(DeserializationError::MissingField(key.to_key_string()))
+		}
+	}
+}
+
+
+// impl<K: Into<Datum>, V: Into<Datum>> From<HashMap<K, V>> for Datum {
+// 	fn from(map: HashMap<K, V>) -> Self {
+// 		let data = MappedData::serial_ready();
+// 		data.serialize_entry()
+// 	}
+// }
 
 
 impl TryFrom<Datum> for usize {
@@ -119,7 +213,19 @@ impl TryFrom<Datum> for usize {
 	fn try_from(value: Datum) -> Result<Self, Self::Error> {
 		match value {
 			Datum::U64(n) => Ok(n as usize),
-			_ => Err(DeserializationError::InvalidType { field: "", expected: "u64", actual: "todo!" })
+			_ => Err(DeserializationError::InvalidType { field: "".into(), expected: "u64", actual: "todo!" })
+		}
+	}
+}
+
+
+impl TryFrom<Datum> for u32 {
+	type Error = DeserializationError;
+
+	fn try_from(value: Datum) -> Result<Self, Self::Error> {
+		match value {
+			Datum::U32(n) => Ok(n),
+			_ => Err(DeserializationError::InvalidType { field: "".into(), expected: "u32", actual: "todo!" })
 		}
 	}
 }
@@ -131,7 +237,7 @@ impl TryFrom<Datum> for u64 {
 	fn try_from(value: Datum) -> Result<Self, Self::Error> {
 		match value {
 			Datum::U64(n) => Ok(n),
-			_ => Err(DeserializationError::InvalidType { field: "", expected: "u64", actual: "todo!" })
+			_ => Err(DeserializationError::InvalidType { field: "".into(), expected: "u64", actual: "todo!" })
 		}
 	}
 }
@@ -143,19 +249,7 @@ impl TryFrom<Datum> for String {
 	fn try_from(value: Datum) -> Result<Self, Self::Error> {
 		match value {
 			Datum::String(x) => Ok(x),
-			_ => Err(DeserializationError::InvalidType { field: "", expected: "String", actual: "todo!" })
-		}
-	}
-}
-
-
-impl TryFrom<Datum> for &'static str {
-	type Error = DeserializationError;
-	
-	fn try_from(value: Datum) -> Result<Self, Self::Error> {
-		match value {
-			Datum::Str(x) => Ok(x),
-			_ => Err(DeserializationError::InvalidType { field: "", expected: "static str", actual: "todo!" })
+			_ => Err(DeserializationError::InvalidType { field: "".into(), expected: "String", actual: "todo!" })
 		}
 	}
 }
@@ -173,9 +267,9 @@ impl GetDatumType for String {
 }
 
 
-impl GetDatumType for &'static str {
+impl GetDatumType for &str {
 	fn get_datum_type() -> DatumType {
-		DatumType::Str
+		DatumType::String
 	}
 }
 
@@ -183,5 +277,20 @@ impl GetDatumType for &'static str {
 impl GetDatumType for u64 {
 	fn get_datum_type() -> DatumType {
 		DatumType::U64
+	}
+}
+
+
+#[cfg(any(feature = "toml", feature = "json"))]
+impl Datum {
+	pub fn to_key_string(&self) -> String {
+		match self {
+			Datum::String(s) => s.clone(),
+			// Datum::Str(s) => (*s).into(),
+			Datum::U32(s) => s.to_string(),
+			Datum::U64(s) => s.to_string(),
+			Datum::Map(_) => unimplemented!("Cannot turn map into key string"),
+			Datum::Array(_) => unimplemented!("Cannot turn array into key string")
+		}
 	}
 }

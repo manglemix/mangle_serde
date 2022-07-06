@@ -17,11 +17,13 @@
 //! Best of all, the code you write is specific to the intended application, not the format.
 //! You'll be describing the process of moving data from structs to agnostic data profiles.
 //! All data profiles can convert to and from toml, json, or binary, for free.
-#![deny(missing_docs, missing_debug_implementations, missing_crate_level_docs, missing_fragment_specifier, missing_copy_implementations)]
+// #![deny(missing_docs, missing_debug_implementations, missing_crate_level_docs, missing_fragment_specifier, missing_copy_implementations)]
 #![forbid(unsafe_code, unconditional_panic)]
 
 #[cfg(feature = "toml")]
 extern crate toml as extern_toml;
+#[cfg(feature = "json")]
+extern crate json as extern_json;
 
 use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
@@ -29,6 +31,8 @@ use std::string::FromUtf8Error;
 
 #[cfg(feature = "toml")]
 use extern_toml::{de::Error as TOMLError};
+#[cfg(feature = "json")]
+use extern_json::{Error as JSONError};
 
 use crate::profiles::DataProfile;
 pub use crate::profiles::{ArrayData, MappedData, ProfileFromData, ProfileToData};
@@ -42,17 +46,20 @@ mod profiles;
 #[cfg(feature = "bin")]
 mod binary;
 
+#[cfg(feature = "json")]
+mod json;
+
 /// An error that can occur when trying to deserialize data
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum DeserializationError {
 	/// An expected field could not be found
 	/// Contains the field name
-	MissingField(&'static str),
+	MissingField(String),
 	/// An expected field has an unexpected data type
 	InvalidType {
 		/// The name of the field.
 		/// The name "\<global\>" implies that the entire serialized data is in the wrong format
-		field: &'static str,
+		field: String,
 		/// The expected type of the field
 		expected: &'static str,
 		/// The actual type of the field
@@ -61,7 +68,7 @@ pub enum DeserializationError {
 	/// An expected field does not contain any of the expected data
 	NoMatch {
 		/// The name of the field
-		field: &'static str,
+		field: String,
 		/// The actual data contained in the field
 		actual: String,
 	},
@@ -72,18 +79,22 @@ pub enum DeserializationError {
 	#[cfg(feature = "toml")]
 	/// An error occurred while parsing TOML formatted data
 	TOMLError(TOMLError),
+	#[cfg(feature = "json")]
+	/// An error occurred while parsing JSON formatted data
+	JSONError(JSONError),
 }
 
 
 impl DeserializationError {
 	/// Sets the field parameter if possible.
 	/// This is to help with debugging
-	fn set_field(&mut self, new_field: &'static str) {
+	fn set_field(&mut self, new_field: String) {
 		*match self {
 			Self::MissingField(_) => return,
 			Self::InvalidType { field, .. } => field,
 			Self::NoMatch { field, .. } => field,
 			Self::TOMLError(_) => return,
+			Self::JSONError(_) => return,
 			DeserializationError::FromUTF8Error(_) => return,
 			DeserializationError::UnexpectedEOF => return
 		} = new_field;
@@ -95,12 +106,12 @@ impl DeserializationError {
 trait TransformResult<T> {
 	/// Converts the result into a deserialization result.
 	/// Sets some fields in deserialization error if possible
-	fn transform(self, new_field: &'static str) -> Result<T, DeserializationError>;
+	fn transform(self, new_field: String) -> Result<T, DeserializationError>;
 }
 
 
 impl<T, E: Into<DeserializationError>> TransformResult<T> for Result<T, E> {
-	fn transform(self, new_field: &'static str) -> Result<T, DeserializationError> {
+	fn transform(self, new_field: String) -> Result<T, DeserializationError> {
 		match self {
 			Ok(x) => Ok(x),
 			Err(e) => {
@@ -176,6 +187,7 @@ make_data_profile!(
 mod tests {
 	use crate::toml::TOMLSerde;
 	use crate::binary::BinSerde;
+	use crate::json::JSONSerde;
 	use crate::profiles::{convert_data_profile};
 	use super::*;
 
@@ -193,7 +205,11 @@ mod tests {
 	
 	impl Serde<ReadableProfile> for TestStruct {
 		fn serde(&mut self, data: &mut ReadableProfile) -> Result<(), DeserializationError> {
-			data.serde_cloned_matched_entry("name", &mut self.name, ["fergus", "ferus"].iter())?;
+			data.serde_cloned_matched_entry(
+				"name",
+				&mut self.name,
+				["ferus"].iter()
+			)?;
 			data.serde_entry("age", &mut self.age)?;
 			data.serde_entry("id", &mut self.id)
 		}
@@ -201,6 +217,10 @@ mod tests {
 
 	impl Serde<EfficientProfile> for TestStruct {
 		fn serde(&mut self, data: &mut EfficientProfile) -> Result<(), DeserializationError> {
+			data.serde_cloned_matched_item(
+				&mut self.name,
+				&["ferus"]
+			)?;
 			data.serde_item(&mut self.age)?;
 			data.serde_item(&mut self.id)
 		}
@@ -208,6 +228,7 @@ mod tests {
 	
 	impl TOMLSerde<ReadableProfile> for TestStruct {}
 	impl BinSerde<EfficientProfile> for TestStruct {}
+	impl JSONSerde<ReadableProfile> for TestStruct { const TAB_SIZE: u16 = 4; }
 	
 	#[test]
 	fn test_serde() {
@@ -243,9 +264,22 @@ mod tests {
 			id: "gangnam".into(),
 		};
 		let test: TestProfile = convert_data_profile(Serde::<ReadableProfile>::into_data_profile(src));
-		let ser = ProfileToData::into(test);
+		let ser: extern_json::JsonValue = ProfileToData::into(test);
 		println!("{}", ser);
 		let deser: TestStruct = Serde::<ReadableProfile>::from_data_profile(ProfileFromData::try_from(ser).unwrap()).unwrap();
+		println!("{:?}", deser);
+	}
+
+	#[test]
+	fn test_serde4() {
+		let src = TestStruct {
+			name: "ferus",
+			age: 52,
+			id: "gangnam".into(),
+		};
+		let ser = src.serialize_json_pretty();
+		println!("{}", ser);
+		let deser = TestStruct::deserialize_json(ser).unwrap();
 		println!("{:?}", deser);
 	}
 }

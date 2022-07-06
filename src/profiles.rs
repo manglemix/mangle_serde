@@ -12,7 +12,7 @@ mod array;
 /// An internal representation of the agnostic data format.
 /// This format can only be in serialization or deserialization mode, not both
 #[derive(Debug)]
-enum SerdeData<S: 'static, D: ?Sized> {
+enum SerdeData<S, D: ?Sized> {
 	Deserializing(Box<D>),
 	Serializing(S),
 }
@@ -49,24 +49,13 @@ pub trait ProfileToData<D> {
 /// All required functionality is automatically implemented
 #[macro_export]
 macro_rules! make_data_profile {
-	// ($name: ident use $base: ty) => {
-	// 	make_data_profile!(
-	// 		///
-	// 		=> $name use $base
-	// 	)
-	// };
     ($(#[$attr:meta])* $name: ident use $base: ty) => {
 
+// Define new type
 $(#[$attr])*
 #[derive(Debug)]
 pub struct $name($base);
 
-
-// impl<T: DerefMut<Target=$base>> From<T> for $name {
-// 	fn from(other: T) -> Self {
-// 		Self(std::mem::replace(other.deref_mut().data))
-// 	}
-// }
 
 impl Deref for $name {
 	type Target = $base;
@@ -91,12 +80,14 @@ impl DataProfile for $name {
 	}
 }
 
+// Inherit all ProfileFromData traits from base
 impl<D> ProfileFromData<D> for $name where $base: ProfileFromData<D> {
 	fn try_from(data: D) -> Result<Self, DeserializationError> {
 		Ok(Self(ProfileFromData::try_from(data)?))
 	}
 }
 
+// Inherit all ProfileToData traits from base
 impl<D> ProfileToData<D> for $name where $base: ProfileToData<D> {
 	fn into(self) -> D {
 		ProfileToData::into(self.0)
@@ -113,7 +104,7 @@ impl<D> ProfileToData<D> for $name where $base: ProfileToData<D> {
 /// This is niche function that can come in handy if you are handling many data profiles and you want to
 /// change them all into the same data profile.
 /// This can also be used to convert between sub-formats.
-/// 
+///
 /// If you have two different styles for toml that you have to use,
 /// you can create two data profiles for serializing to toml
 /// and use this function to convert profiles when necessary

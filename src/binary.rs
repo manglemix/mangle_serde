@@ -56,8 +56,9 @@ impl From<Datum> for Vec<u8> {
 	fn from(data: Datum) -> Self {
 		match data {
 			Datum::String(x) => x.into_bytes(),
-			Datum::Str(x) => String::from(x).into_bytes(),
+			// Datum::Str(x) => String::from(x).into_bytes(),
 			Datum::U64(x) => x.to_be_bytes().to_vec(),
+			Datum::U32(x) => x.to_be_bytes().to_vec(),
 			Datum::Map(_) => todo!(),
 			Datum::Array(x) => ProfileToData::into(x)
 		}
